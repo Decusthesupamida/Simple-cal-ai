@@ -1,0 +1,266 @@
+package net.ppronko.pet.ai_calories_parser.pattern
+
+import net.ppronko.pet.ai_calories_parser.bot_command.AddCommand
+import net.ppronko.pet.ai_calories_parser.bot_command.mealCache
+import net.ppronko.pet.ai_calories_parser.data.*
+import net.ppronko.pet.ai_calories_parser.data.entity.TelegramUser
+import net.ppronko.pet.ai_calories_parser.menu.MainMenuKeyboard
+import net.ppronko.pet.ai_calories_parser.service.DailyGoalService
+import net.ppronko.pet.ai_calories_parser.service.UserProfileService
+import net.ppronko.pet.ai_calories_parser.service.UserService
+import org.slf4j.LoggerFactory
+import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate
+import org.springframework.stereotype.Component
+import org.telegram.telegrambots.meta.api.methods.send.SendMessage
+import org.telegram.telegrambots.meta.api.objects.Update
+import org.telegram.telegrambots.meta.bots.AbsSender
+import java.time.LocalDate
+import java.util.Locale
+
+@Component
+class CommandDispatcher(
+    private val commandRegistry: CommandRegistry,
+    private val userService: UserService,
+    private val userProfileService: UserProfileService,
+    private val dailyGoalService: DailyGoalService,
+) {
+    private val logger = LoggerFactory.getLogger(javaClass)
+
+    fun dispatch(update: Update, sender: AbsSender) {
+        val message = update.message
+        val chatId = message.chatId
+        val user = userService.getOrCreateUser(message.from)
+
+        logger.info("User state is: {}", user.state)
+
+        if (user.state != UserState.NONE) {
+            logger.info("-> Handling as a STATEFUL RESPONSE because state is not NONE.")
+            handleStatefulResponse(update, user, sender)
+            logger.info("--- DISPATCHER END (after stateful response) ---")
+            return
+        }
+
+        val commandKey = resolveCommandKey(message.text)
+        logger.info("Resolved command key is: '{}'", commandKey)
+
+        if (commandKey != null) {
+            commandRegistry.getCommand(commandKey)?.execute(update, sender)
+            return
+        }
+
+        if (message.hasPhoto()) {
+            commandRegistry.getCommand(BotCommandConstants.ADD.command)?.execute(update, sender)
+            return
+        }
+
+        logger.warn("Received unknown message from chatId {}: '{}'", chatId, message.text)
+        val helpCommand = commandRegistry.getCommand(BotCommandConstants.HELP.command)
+        sender.execute(SendMessage(chatId.toString(), "Неизвестная команда. Посмотрите, что я умею:"))
+        helpCommand?.execute(update, sender)
+    }
+
+    private fun handleStatefulResponse(update: Update, user: TelegramUser, sender: AbsSender) {
+        val chatId = user.chatId
+        val text = update.message.text
+
+        var success = false
+        var responseText: String? = null
+        val previousState = user.state
+
+        when (previousState) {
+            UserState.PROFILE_AWAITING_WEIGHT -> {
+                val weight = text.replace(",", ".").toDoubleOrNull()
+                if (weight != null && weight > 0) {
+                    userProfileService.updateProfileDetails(user, UserProfileUpdateDto(weight = weight)
+                    )
+                    success = true
+                } else {
+                    responseText = "Пожалуйста, введите корректный вес в виде числа (например, 75.5)."
+                }
+            }
+            UserState.PROFILE_AWAITING_AGE -> {
+                val age = text.toIntOrNull()
+                if (age != null && age > 0) {
+                    userProfileService.updateProfileDetails(user, UserProfileUpdateDto(age = age))
+                    success = true
+                } else {
+                    responseText = "Пожалуйста, введите корректный возраст (например, 30)."
+                }
+            }
+            UserState.PROFILE_AWAITING_HEIGHT -> {
+                val height = text.toIntOrNull()
+                if (height != null && height > 0) {
+                    userProfileService.updateProfileDetails(user, UserProfileUpdateDto(height = height.toDouble()))
+                    success = true
+                } else {
+                    responseText = "Пожалуйста, введите корректный рост в сантиметрах (например, 180)."
+                }
+            }
+            UserState.PROFILE_AWAITING_GENDER -> {
+                val gender = try {
+                    Gender.valueOf(text.uppercase(Locale.getDefault()))
+                } catch (e: IllegalArgumentException) {
+                    null
+                }
+                if (gender != null) {
+                    userProfileService.updateProfileDetails(user, UserProfileUpdateDto(gender = gender))
+                    success = true
+                } else {
+                    responseText = "Пожалуйста, введите `MALE` или `FEMALE`."
+                }
+            }
+            UserState.PROFILE_AWAITING_ACTIVITY_DESCRIPTION -> {
+                if (text.isNotBlank()) {
+                    sender.execute(SendMessage(chatId.toString(), "🧠 Анализирую вашу активность..."))
+                    userProfileService.updateUserActivity(user, text)
+                    success = true
+                } else {
+                    responseText = "Описание активности не может быть пустым."
+                }
+            }
+            UserState.MEAL_AWAITING_DESCRIPTION -> {
+                commandRegistry.getCommand(BotCommandConstants.ADD.command)?.execute(update, sender)
+                return
+            }
+            UserState.PROFILE_AWAITING_MANUAL_GOALS -> {
+                val parts = text.split(" ").mapNotNull { it.toIntOrNull() }
+                if (parts.size == 4) {
+                    val goals = MacroGoals(
+                        calories = parts[0],
+                        protein = parts[1],
+                        fats = parts[2],
+                        carbs = parts[3]
+                    )
+                    dailyGoalService.saveManualGoal(user, LocalDate.now(), goals)
+                    success = true
+                } else {
+                    responseText = "Неверный формат. Пожалуйста, введите 4 числа, разделенных пробелом (Ккал Белки Жиры Углеводы)."
+                }
+            }
+            UserState.NONE -> {
+                logger.warn("handleStatefulResponse called for user {} with NONE state", chatId)
+                return
+            }
+            UserState.MEAL_AWAITING_AI_ITEM_EDIT -> {
+                val context = user.editingContext
+                if (context == null) {
+                    responseText = "Ошибка: не найден контекст редактирования."
+                    success = true
+                } else {
+                    val text = update.message.text
+                    val parts = text.split(",").map { it.trim() }
+
+                    if (parts.size == 6) {
+
+                        val name = parts[0]
+                        val weightStr = parts[1]
+                        val calStr = parts[2]
+                        val pStr = parts[3]
+                        val fStr = parts[4]
+                        val cStr = parts[5]
+
+                        val weight = weightStr.toIntOrNull()
+                        val calories = calStr.toIntOrNull()
+                        val protein = pStr.toIntOrNull()
+                        val fats = fStr.toIntOrNull()
+                        val carbs = cStr.toIntOrNull()
+
+                        if (weight != null && calories != null && protein != null && fats != null && carbs != null) {
+                            val (sessionId, itemIndex) = context.split(":")
+
+                            val updatedItem = FoodItem(
+                                name = name,
+                                weightGrams = weight,
+                                calories = calories,
+                                protein = protein,
+                                fats = fats,
+                                carbs = carbs
+                            )
+
+                            updateCachedMeal(sessionId, itemIndex.toInt(), updatedItem)
+                            success = true
+                        } else {
+                            responseText =
+                                "Неверный формат чисел. Пожалуйста, введите данные в правильном формате."
+                        }
+                    } else {
+                        responseText = "Неверный формат. Нужно 6 значений, разделенных запятой."
+                    }
+                }
+            }
+        }
+
+        responseText?.let {
+            sender.execute(SendMessage(chatId.toString(), it))
+        }
+
+        if (success) {
+            userService.updateState(user, UserState.NONE)
+
+            when {
+                previousState.name.startsWith("PROFILE_") -> {
+                    commandRegistry.getCommand(BotCommandConstants.PROFILE.command)?.execute(update, sender)
+                }
+                previousState.name.startsWith("MEAL_") -> {
+                    val sessionId = user.editingContext?.split(":")?.get(0)
+                    if (sessionId != null) {
+                        val parsedMeal = mealCache[sessionId]
+                        if (parsedMeal != null) {
+                            val addCommand = commandRegistry.getCommand(BotCommandConstants.ADD.command) as? AddCommand
+                            if (addCommand != null) {
+                                val newText = addCommand.formatParsedMealResponse(parsedMeal)
+                                val newKeyboard = addCommand.createAiResultKeyboard(sessionId, parsedMeal)
+                                sender.execute(SendMessage(chatId.toString(), newText).apply {
+                                    replyMarkup = newKeyboard
+                                    parseMode = "Markdown"
+                                })
+                            }
+                        }
+                    }
+                    // Сбрасываем контекст редактирования
+                    user.editingContext = null
+                    userService.save(user)
+                }
+            }
+        }
+    }
+
+    private fun resolveCommandKey(text: String?): String? {
+        if (text.isNullOrBlank()) return null
+
+        val botCommand = BotCommandConstants.fromString(text)
+        if (botCommand != null) {
+            return botCommand.command
+        }
+
+        return when (text) {
+            MainMenuKeyboard.ADD_MEAL -> BotCommandConstants.ADD.command
+            MainMenuKeyboard.GET_SUMMARY -> BotCommandConstants.SUMMARY.command
+            MainMenuKeyboard.VIEW_PROFILE -> BotCommandConstants.PROFILE.command
+            MainMenuKeyboard.HELP -> BotCommandConstants.HELP.command
+            else -> null
+        }
+    }
+
+    private fun updateCachedMeal(sessionId: String, itemIndex: Int, updatedItem: FoodItem) {
+        val currentMeal = mealCache[sessionId] ?: return
+
+        val newItems = currentMeal.items.toMutableList().apply {
+            this[itemIndex] = updatedItem
+        }
+
+        val newSummary = MealSummary(
+            totalCalories = newItems.sumOf { it.calories },
+            totalProtein = newItems.sumOf { it.protein },
+            totalFats = newItems.sumOf { it.fats },
+            totalCarbs = newItems.sumOf { it.carbs }
+        )
+
+        val updatedMeal = currentMeal.copy(
+            items = newItems,
+            mealSummary = newSummary
+        )
+
+        mealCache[sessionId] = updatedMeal
+    }
+}

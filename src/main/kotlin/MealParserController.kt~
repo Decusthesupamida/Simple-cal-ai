@@ -1,0 +1,18 @@
+import org.springframework.web.bind.annotation.RequestMapping
+import org.springframework.web.bind.annotation.RestController
+
+@RestController
+@RequestMapping("/api/v1/parser")
+class MealParserController {
+
+    @PostMapping("/meal")
+    fun parseMeal(@RequestBody request: ParseRequest): ResponseEntity<ParsedMealResponse> {
+        return try {
+            val result = geminiParserService.parseMealDescription(request.description)
+            ResponseEntity.ok(result)
+        } catch (e: Exception) {
+            // В реальном проекте здесь будет более умная обработка ошибок
+            ResponseEntity.internalServerError().build()
+        }
+    }
+}

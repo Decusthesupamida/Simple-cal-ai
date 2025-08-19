@@ -1,0 +1,4 @@
+package net.ppronko.pet.ai_calories_parser
+
+enum class BotCommandConstants {
+}

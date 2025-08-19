@@ -1,0 +1,54 @@
+package net.ppronko.pet.ai_calories_parser.util
+import net.ppronko.pet.ai_calories_parser.data.DailySummaryDto
+
+object MessageFormatter {
+
+    fun formatSummary(summary: DailySummaryDto): String {
+        if (summary.entries.isEmpty()) {
+            return "За сегодня еще нет записей в дневнике."
+        }
+
+        val eatenHeader = "<b>Съедено:</b>"
+        val entriesList = summary.entries.joinToString("\n") {
+            "- ${escapeHtml(it.mealName)}: ${it.totalCalories} ккал"
+        }
+
+        val c = summary.consumed
+        val g = summary.goal
+        val r = summary.remaining
+
+        val table = """
+                <pre>
+                    Съедено /  Цель / Осталось
+                ──────────────────────────────────
+                🔥 Ккал:     ${c.calories.toString().padStart(5)} / ${
+                            g.calories.toString().padStart(5)
+                        } / ${r.calories.toString().padStart(5)}
+                💪 Белки:    ${c.protein.toString().padStart(5)} / ${
+                            g.protein.toString().padStart(5)
+                        } / ${r.protein.toString().padStart(5)}
+                🥑 Жиры:     ${c.fats.toString().padStart(5)} / ${
+                            g.fats.toString().padStart(5)
+                        } / ${r.fats.toString().padStart(5)}
+                🍞 Углеводы: ${c.carbs.toString().padStart(5)} / ${
+                            g.carbs.toString().padStart(5)
+                        } / ${r.carbs.toString().padStart(5)}
+                </pre>
+        """.trimIndent()
+
+        return """
+📈 <b>Сводка за сегодня</b>   
+            
+$eatenHeader
+$entriesList
+            
+📊 <b>Прогресс</b>
+            $table
+        """.trimIndent()
+    }
+
+    private fun escapeHtml(text: String): String =
+        text.replace("&", "&amp;")
+            .replace("<", "&lt;")
+            .replace(">", "&gt;")
+}

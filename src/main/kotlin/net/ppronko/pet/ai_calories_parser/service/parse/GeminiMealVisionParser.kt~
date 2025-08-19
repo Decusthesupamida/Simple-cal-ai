@@ -1,0 +1,84 @@
+package net.ppronko.pet.ai_calories_parser.service.parse
+
+import com.fasterxml.jackson.databind.ObjectMapper
+import net.ppronko.pet.ai_calories_parser.data.MealParseInput
+import net.ppronko.pet.ai_calories_parser.data.ParsedMealResponse
+import net.ppronko.pet.ai_calories_parser.service.adapter.AiClient
+import org.slf4j.LoggerFactory
+import org.springframework.stereotype.Service
+import org.springframework.web.client.RestTemplate
+import org.springframework.web.reactive.function.client.WebClient
+import java.util.Base64
+
+@Service("mealVisionParser")
+class GeminiMealVisionParser(
+    private val geminiClient: AiClient,
+    private val geminiWebClient: WebClient,
+    private val objectMapper: ObjectMapper
+) : AiParser<MealParseInput, ParsedMealResponse> {
+
+    private val logger = LoggerFactory.getLogger(javaClass)
+
+    override fun parse(input: MealParseInput): ParsedMealResponse {
+        val imageUrl = input.imageUrl
+            ?: throw IllegalArgumentException("Image URL must be provided for the vision parser.")
+
+        logger.info("Parsing meal from image URL: {}", imageUrl)
+
+        val imageBytes = restTemplate.getForObject(imageUrl, ByteArray::class.java)
+            ?: throw RuntimeException("Failed to download image from URL: $imageUrl")
+        val base64Image = Base64.getEncoder().encodeToString(imageBytes)
+
+        val prompt = createVisionPrompt(input.description)
+
+        val responseJson = geminiClient.generateContent(prompt, base64Image)
+        logger.debug("Received JSON response for vision parsing: {}", responseJson)
+
+        return objectMapper.readValue(responseJson, ParsedMealResponse::class.java)
+    }
+
+    private fun downloadImage(url: String): ByteArray? {
+        return geminiWebClient.get()
+            .uri(url)
+            .retrieve()
+            .bodyToMono(ByteArray::class.java)
+            .block() 
+    }
+
+    private fun createVisionPrompt(userText: String?): String {
+        val additionalInstruction = if (userText.isNullOrBlank()) {
+            "Просто опиши, что изображено на фото."
+        } else {
+            "Используй следующий текст как дополнительный контекст: \"$userText\""
+        }
+
+        return """
+            Ты — эксперт-диетолог. Твоя задача — проанализировать ИЗОБРАЖЕНИЕ еды и текстовое описание к нему, и вернуть ТОЛЬКО JSON-объект.
+
+            Проанализируй фото. $additionalInstruction
+
+            Верни результат в строгой JSON-структуре (mealName, items, summary).
+            {
+              "mealName": "краткое название приема пищи на русском",
+              "items": [
+                {
+                  "name": "название продукта на русском",
+                  "weightGrams": примерный_вес_в_граммах,
+                  "calories": калории_для_этого_веса,
+                  "protein": белки_в_граммах_для_этого_веса,
+                  "fats": жиры_в_граммах_для_этого_веса,
+                  "carbs": углеводы_в_граммах_для_этого_веса
+                }
+              ],
+              "summary": {
+                "totalCalories": общие_калории_за_весь_прием_пищи,
+                "totalProtein": общие_белки_за_весь_прием_пищи,
+                "totalFats": общие_жиры_за_весь_прием_пищи,
+                "totalCarbs": общие_углеводы_за_весь_прием_пищи
+              }
+            }
+            
+            Оценивай вес и КБЖУ максимально реалистично на основе изображения. Будь точным.
+        """.trimIndent()
+    }
+}

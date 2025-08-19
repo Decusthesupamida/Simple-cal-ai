@@ -1,0 +1,198 @@
+package net.ppronko.pet.ai_calories_parser.bot
+
+import net.ppronko.pet.ai_calories_parser.bot_command.ProfileCommand
+import net.ppronko.pet.ai_calories_parser.bot_command.mealCache
+import net.ppronko.pet.ai_calories_parser.config.properties.TelegramBotProperties
+import net.ppronko.pet.ai_calories_parser.data.BotCommandConstants
+import net.ppronko.pet.ai_calories_parser.data.UserState
+import net.ppronko.pet.ai_calories_parser.menu.ProfileKeyboard
+import net.ppronko.pet.ai_calories_parser.pattern.CommandDispatcher
+import net.ppronko.pet.ai_calories_parser.pattern.CommandRegistry
+import net.ppronko.pet.ai_calories_parser.service.MealService
+import net.ppronko.pet.ai_calories_parser.service.UserProfileService
+import net.ppronko.pet.ai_calories_parser.service.UserService
+import net.ppronko.pet.ai_calories_parser.util.CallbackData
+import org.slf4j.LoggerFactory
+import org.springframework.stereotype.Component
+import org.telegram.telegrambots.bots.TelegramLongPollingBot
+import org.telegram.telegrambots.meta.api.methods.AnswerCallbackQuery
+import org.telegram.telegrambots.meta.api.methods.updatingmessages.EditMessageText
+import org.telegram.telegrambots.meta.api.objects.CallbackQuery
+import org.telegram.telegrambots.meta.api.objects.Update
+import org.telegram.telegrambots.meta.api.objects.replykeyboard.InlineKeyboardMarkup
+import org.telegram.telegrambots.meta.exceptions.TelegramApiException
+
+@Component
+class TelegramBot(
+    private val telegramProperties: TelegramBotProperties,
+    private val commandDispatcher: CommandDispatcher,
+    private val userService: UserService,
+    private val mealService: MealService,
+    private val userProfileService: UserProfileService,
+    private val commandRegistry: CommandRegistry
+): TelegramLongPollingBot(telegramProperties.token) {
+
+    private val logger = LoggerFactory.getLogger(javaClass)
+
+    override fun getBotUsername(): String = telegramProperties.username
+
+    override fun onUpdateReceived(update: Update) {
+        try {
+            when {
+                update.hasMessage() -> {
+                    commandDispatcher.dispatch(update, this)
+                }
+                update.hasCallbackQuery() -> {
+                    handleCallback(update)
+                }
+            }
+        } catch (e: TelegramApiException) {
+            logger.error("Telegram API exception", e)
+        } catch (e: Exception) {
+            logger.error("Unhandled exception in onUpdateReceived", e)
+        }
+    }
+
+    private fun handleCallback(update: Update) {
+        val callbackQuery = update.callbackQuery
+        val chatId = callbackQuery.message.chatId
+        val messageId = callbackQuery.message.messageId
+        val user = userService.getOrCreateUser(callbackQuery.from)
+        val data = callbackQuery.data
+
+        var profileStateToSet: UserState? = null
+        var promptText: String? = null
+
+        when (data) {
+            ProfileKeyboard.EDIT_WEIGHT -> {
+                profileStateToSet = UserState.AWAITING_WEIGHT
+                promptText = "✏️ Введите ваш новый вес в килограммах (например: 75.5)"
+            }
+            ProfileKeyboard.EDIT_AGE -> {
+                profileStateToSet = UserState.AWAITING_AGE
+                promptText = "✏️ Введите ваш возраст (например: 30)"
+            }
+            ProfileKeyboard.EDIT_HEIGHT -> {
+                profileStateToSet = UserState.AWAITING_HEIGHT
+                promptText = "✏️ Введите ваш рост в сантиметрах (например: 180)"
+            }
+            ProfileKeyboard.EDIT_GENDER -> {
+                profileStateToSet = UserState.AWAITING_GENDER
+                promptText = "✏️ Введите ваш пол: `MALE` или `FEMALE`"
+            }
+            ProfileKeyboard.EDIT_ACTIVITY -> {
+                profileStateToSet = UserState.AWAITING_ACTIVITY_DESCRIPTION
+                promptText = "✏️ Опишите вашу среднюю недельную активность (например: '3 тренировки в зале, сидячая работа')."
+            }
+            ProfileKeyboard.TOGGLE_AUTO_GOALS -> {
+                val profile = userProfileService.getProfile(user.chatId)
+                val isNowAutomatic = !profile.areGoalsAutomatic
+                val updatedProfile = userProfileService.setGoalsMode(user, isNowAutomatic)
+
+                val profileCommand = commandRegistry.getCommand(BotCommandConstants.PROFILE.command)
+
+                if (profileCommand is ProfileCommand) {
+                    val currentGoals = mealService.getGoalForToday(user)
+                    val calculatedGoals = userProfileService.getCalculatedGoals(user)
+
+                    val newText = profileCommand.formatProfile(updatedProfile, currentGoals, calculatedGoals)
+
+                    editMessageText(chatId, messageId, newText, ProfileKeyboard.create(updatedProfile))
+
+                    val modeText = if (isNowAutomatic) "Автоматический" else "Ручной"
+                    answerCallbackQuery(callbackQuery.id, "Режим целей изменен на: $modeText")
+                }
+                return
+            }
+            ProfileKeyboard.SET_MANUAL_GOALS -> {
+                profileStateToSet = UserState.AWAITING_MANUAL_GOALS
+                promptText = "✏️ Введите ваши цели на сегодня в формате: *Ккал Белки Жиры Углеводы*\n" +
+                        "Например: `2500 150 80 250`"
+            }
+        }
+
+        // Если мы нашли совпадение для изменения профиля
+        if (profileStateToSet != null && promptText != null) {
+            userService.updateState(user, profileStateToSet)
+            editMessageText(chatId, messageId, promptText)
+            answerCallbackQuery(callbackQuery.id)
+            return
+        }
+
+
+        val mealCallbackData = CallbackData.fromString(data)
+        if (mealCallbackData != null) {
+            when (mealCallbackData.type) {
+                "meal_save" -> {
+                    val sessionId = mealCallbackData.payload
+                    val parsedMeal = mealCache.remove(sessionId)
+                    if (parsedMeal != null) {
+                        mealService.saveParsedMeal(user, parsedMeal)
+                        editMessageText(chatId, messageId, "✅ Запись '${parsedMeal.mealName}' сохранена в дневник.")
+                    } else {
+                        editMessageText(chatId, messageId, callbackQuery.message.text + "\n\n_(Эта запись уже обработана)_")
+                    }
+                }
+                "meal_edit_item" -> {
+                    val (sessionId, itemIndexStr) = mealCallbackData.payload.split(":")
+                    val itemIndex = itemIndexStr.toInt()
+
+                    // Запоминаем контекст редактирования
+                    user.state = UserState.AWAITING_AI_ITEM_EDIT
+                    user.editingContext = "$sessionId:$itemIndex" // Сохраняем и ID сессии, и индекс
+                    userService.save(user)
+
+                    val promptText = "Введите новые данные для этого продукта в формате:\n" +
+                            "`Название, Вес(г), Ккал, Белки, Жиры, Углеводы`\n\n" +
+                            "Например: `Овсянка, 80, 300, 10, 5, 50`"
+
+                    editMessageText(chatId, messageId, promptText) // Редактируем сообщение, убирая кнопки
+                    answerCallbackQuery(callbackQuery.id)
+                }
+                "meal_cancel" -> {
+                    mealCache.remove(mealCallbackData.payload)
+                    editMessageText(chatId, messageId, "❌ Операция отменена.")
+                }
+            }
+            answerCallbackQuery(callbackQuery.id)
+            return
+        }
+
+        logger.warn("Received unknown callback query data: '{}' from user {}", data, chatId)
+        answerCallbackQuery(callbackQuery.id, "Неизвестное действие", true)
+    }
+
+    private fun answerCallbackQuery(callbackQueryId: String, text: String? = null, showAlert: Boolean = false) {
+        val answer = AnswerCallbackQuery(callbackQueryId).apply {
+            this.text = text
+            this.showAlert = showAlert
+        }
+        execute(answer)
+    }
+
+    private fun editMessageText(chatId: Long, messageId: Int, newText: String) {
+        val editMessage = EditMessageText().apply {
+            this.chatId = chatId.toString()
+            this.messageId = messageId
+            this.text = newText
+            this.replyMarkup = null
+            this.parseMode = "Markdown"
+        }
+        execute(editMessage)
+    }
+
+    private fun editMessageText(chatId: Long, messageId: Int, newText: String, newKeyboard: InlineKeyboardMarkup) {
+        val editMessage = EditMessageText().apply {
+            this.chatId = chatId.toString()
+            this.messageId = messageId
+            this.text = newText
+            this.replyMarkup = newKeyboard
+            this.parseMode = "MarkdownV2"
+        }
+        try {
+            execute(editMessage)
+        } catch (e: TelegramApiException) {
+            logger.error("Failed to edit message with markup", e)
+        }
+    }
+}

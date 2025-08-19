@@ -1,0 +1,27 @@
+package net.ppronko.pet.ai_calories_parser.data.entity
+
+import jakarta.persistence.*
+import net.ppronko.pet.ai_calories_parser.data.UserState
+
+@Entity
+@Table(name = "telegram_users")
+data class TelegramUser (
+    @Id
+    @Column(nullable = false, unique = true)
+    open val chatId: Long,
+    @Column(name = "first_name")
+    open val firstName: String?,
+    @Column(name = "username")
+    open val username: String?,
+    @Enumerated(EnumType.STRING)
+    open var state: UserState = UserState.NONE,
+    @OneToOne(cascade = [CascadeType.ALL], fetch = FetchType.EAGER, orphanRemoval = true)
+    @JoinColumn(name = "profile_id", referencedColumnName = "id")
+    open var profile: TelegramUserProfile? = null,
+    open var editingContext: String? = null
+) {
+
+    fun addProfile(profile: TelegramUserProfile) {
+        this.profile = profile
+    }
+}

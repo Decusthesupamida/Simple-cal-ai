@@ -1,0 +1,4 @@
+package net.ppronko.pet.ai_calories_parser
+
+class CommandDispacher {
+}

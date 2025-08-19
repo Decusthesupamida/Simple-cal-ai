@@ -1,0 +1,66 @@
+package net.ppronko.pet.ai_calories_parser.service
+
+import net.ppronko.pet.ai_calories_parser.adapter.GeminiClientAdapter
+import net.ppronko.pet.ai_calories_parser.data.ParsedMealResponse
+import org.springframework.stereotype.Service
+import org.springframework.web.client.RestTemplate
+
+@Service
+class GeminiVisionParser(
+    private val aiClient: GeminiClientAdapter,
+    // RestTemplate нужен для простого скачивания файла
+    private val restTemplate: RestTemplate
+) : AiParser<MealParseInput, ParsedMealResponse> {
+
+    private val logger = LoggerFactory.getLogger(javaClass)
+
+    override fun parse(input: MealParseInput): ParsedMealResponse {
+        if (input.imageUrl == null) {
+            throw IllegalArgumentException("Image URL must be provided for vision parsing.")
+        }
+
+        logger.info("Parsing meal from image URL: ${input.imageUrl}")
+
+        // 1. Скачиваем изображение и кодируем в Base64
+        val imageBytes = restTemplate.getForObject(input.imageUrl, ByteArray::class.java)
+            ?: throw RuntimeException("Failed to download image from URL: ${input.imageUrl}")
+        val base64Image = Base64.getEncoder().encodeToString(imageBytes)
+
+        // 2. Создаем промпт
+        val prompt = createVisionPrompt(input.description)
+
+        // 3. Отправляем в AI
+        // Нам нужно будет доработать AiClient, чтобы он поддерживал мультимодальные запросы
+        val responseJson = aiClient.generateContent(prompt, base64Image)
+
+        // 4. Парсим результат
+        return aiClient.parseJson(responseJson, ParsedMealResponse::class.java)
+    }
+
+    private fun createVisionPrompt(userText: String?): String {
+        val additionalInstruction = userText ?: "Просто опиши, что на этом фото."
+        return """
+            Ты — эксперт-диетолог. Твоя задача — проанализировать изображение еды и текстовое описание к нему, и вернуть ТОЛЬКО JSON-объект.
+
+            Проанализируй фото. Используй текстовое описание как дополнительный контекст или уточнение.
+            "$additionalInstruction"
+
+            Верни результат в строгой JSON-структуре:
+            {
+              "mealName": "краткое название приема пищи",
+              "items": [
+                {
+                  "name": "название продукта",
+                  "weightGrams": примерный_вес,
+                  "calories": ..., "protein": ..., "fats": ..., "carbs": ...
+                }
+              ],
+              "summary": {
+                "totalCalories": ..., "totalProtein": ..., "totalFats": ..., "totalCarbs": ...
+              }
+            }
+
+            Оценивай вес и КБЖУ максимально реалистично.
+        """.trimIndent()
+    }
+}

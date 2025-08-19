@@ -1,0 +1,63 @@
+package net.ppronko.pet.ai_calories_parser.menu
+
+import net.ppronko.pet.ai_calories_parser.data.Gender
+import net.ppronko.pet.ai_calories_parser.data.entity.TelegramUserProfile
+import org.telegram.telegrambots.meta.api.objects.replykeyboard.InlineKeyboardMarkup
+import org.telegram.telegrambots.meta.api.objects.replykeyboard.buttons.InlineKeyboardButton
+
+object ProfileKeyboard {
+
+    const val EDIT_GENDER = "profile_edit_gender"
+    const val EDIT_AGE = "profile_edit_age"
+    const val EDIT_WEIGHT = "profile_edit_weight"
+    const val EDIT_HEIGHT = "profile_edit_height"
+    const val EDIT_ACTIVITY = "profile_edit_activity"
+    const val TOGGLE_AUTO_GOALS = "profile_toggle_auto"
+    const val SET_MANUAL_GOALS = "profile_set_manual_goals"
+
+    /**
+     * Создает динамическую инлайн-клавиатуру для профиля,
+     * отображая текущие значения на кнопках.
+     * @param profile Профиль пользователя с текущими данными.
+     */
+    fun create(profile: TelegramUserProfile): InlineKeyboardMarkup {
+        val genderText = "Пол: ${if (profile.gender == Gender.MALE) "Мужской 🚻" else "Женский 🚺"}"
+        val ageText = "Возраст: ${profile.age}"
+        val weightText = "Вес: ${profile.weight} кг"
+        val heightText = "Рост: ${profile.height} см"
+        val autoGoalsText = if (profile.areGoalsAutomatic) "🎯 Режим: Авто" else "🎯 Режим: Ручной"
+
+        val row1 = listOf(
+            InlineKeyboardButton.builder().text(genderText).callbackData(EDIT_GENDER).build(),
+            InlineKeyboardButton.builder().text(ageText).callbackData(EDIT_AGE).build()
+        )
+        val row2 = listOf(
+            InlineKeyboardButton.builder().text(weightText).callbackData(EDIT_WEIGHT).build(),
+            InlineKeyboardButton.builder().text(heightText).callbackData(EDIT_HEIGHT).build()
+        )
+        val row3 = listOf(
+            InlineKeyboardButton.builder().text("🏃 Описание активности").callbackData(EDIT_ACTIVITY).build()
+        )
+        val row4 = listOf(
+            InlineKeyboardButton.builder().text(autoGoalsText).callbackData(TOGGLE_AUTO_GOALS).build()
+        )
+
+        val row5 = mutableListOf<InlineKeyboardButton>()
+        if (!profile.areGoalsAutomatic) {
+            row5.add(
+                InlineKeyboardButton.builder()
+                    .text("✍️ Установить цели вручную")
+                    .callbackData(SET_MANUAL_GOALS)
+                    .build()
+            )
+        }
+
+        return InlineKeyboardMarkup.builder()
+            .keyboardRow(row1)
+            .keyboardRow(row2)
+            .keyboardRow(row3)
+            .keyboardRow(row4)
+            .keyboardRow(row5)
+            .build()
+    }
+}

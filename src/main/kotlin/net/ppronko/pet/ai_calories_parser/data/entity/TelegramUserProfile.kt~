@@ -1,0 +1,25 @@
+package net.ppronko.pet.ai_calories_parser.data.entity
+
+import jakarta.persistence.*
+import net.ppronko.pet.ai_calories_parser.data.Gender
+import java.util.*
+
+@Entity
+@Table(name = "telegram_user_profile")
+open class TelegramUserProfile {
+
+    @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
+    open var id: Long = 0
+    @Enumerated(EnumType.STRING)
+    open var gender: Gender = Gender.MALE
+    open var age: Int = 0
+    open var weight: Double = 0.0
+    open var height: Double = 0.0
+    @Column(name = "activity_description", length = 512)
+    open var activityDescription: String = "Активность не указана"
+    @Column(name = "activity_coefficient")
+    open var activityCoefficient: Double = 1.55
+    open var areGoalsAutomatic: Boolean = true
+    open var isConfigured: Boolean = false
+
+}

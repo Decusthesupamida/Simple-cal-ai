@@ -1,0 +1,7 @@
+package net.ppronko.pet.ai_calories_parser.service.parse
+
+import net.ppronko.pet.ai_calories_parser.data.ParsedMealResponse
+
+interface MealParser {
+    fun parse(input: MealParseInput): ParsedMealResponse
+}
