@@ -1,5 +1,6 @@
-package net.ppronko.pet.ai_calories_parser.service
+package net.ppronko.pet.ai_calories_parser.service.parse
 
+import net.ppronko.pet.ai_calories_parser.service.GeminiService
 import net.ppronko.pet.ai_calories_parser.service.adapter.GeminiClientAdapter
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service

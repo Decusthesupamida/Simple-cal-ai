@@ -4,7 +4,7 @@ import net.ppronko.pet.ai_calories_parser.config.properties.TelegramBotPropertie
 import net.ppronko.pet.ai_calories_parser.data.DailySummaryDto
 import net.ppronko.pet.ai_calories_parser.data.MacroGoals
 import net.ppronko.pet.ai_calories_parser.data.MealParseInput
-import net.ppronko.pet.ai_calories_parser.data.ParsedMealResponse
+import net.ppronko.pet.ai_calories_parser.data.response.ParsedMealResponse
 import net.ppronko.pet.ai_calories_parser.data.entity.FoodEntry
 import net.ppronko.pet.ai_calories_parser.data.entity.TelegramUser
 import net.ppronko.pet.ai_calories_parser.repository.DailyGoalRepository
@@ -25,7 +25,6 @@ class MealService(
     private val mealVisionParser: AiParser<MealParseInput, ParsedMealResponse>,
     private val botProperties: TelegramBotProperties,
     private val userProfileService: UserProfileService,
-    private val goalRepository: DailyGoalRepository,
     private val dailyGoalRepository: DailyGoalRepository
 ) {
     private val logger = LoggerFactory.getLogger(javaClass)
@@ -83,14 +82,14 @@ class MealService(
         // 2. Считаем съеденное
         val consumed = MacroGoals(
             calories = todayEntries.sumOf { it.totalCalories },
-            protein = todayEntries.sumOf { it.totalProtein },
+            proteins = todayEntries.sumOf { it.totalProtein },
             fats = todayEntries.sumOf { it.totalFats },
             carbs = todayEntries.sumOf { it.totalCarbs }
         )
 
         val remaining = MacroGoals(
             calories = (goal.calories - consumed.calories).coerceAtLeast(0),
-            protein = (goal.protein - consumed.protein).coerceAtLeast(0),
+            proteins = (goal.proteins - consumed.proteins).coerceAtLeast(0),
             fats = (goal.fats - consumed.fats).coerceAtLeast(0),
             carbs = (goal.carbs - consumed.carbs).coerceAtLeast(0)
         )
@@ -113,8 +112,9 @@ class MealService(
         }
 
         val goalForDate = dailyGoalRepository.findByUserAndDate(user, date)
-        if (goalForDate != null) {
-            return goalForDate.toMacroGoals()
+
+        if (goalForDate.isPresent) {
+            return goalForDate.get().toMacroGoals()
         }
 
         val latestGoal = dailyGoalRepository.findFirstByUserAndDateLessThanEqualOrderByDateDesc(user, date)

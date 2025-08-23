@@ -2,7 +2,7 @@ package net.ppronko.pet.ai_calories_parser.service.parse
 
 import com.fasterxml.jackson.databind.ObjectMapper
 import net.ppronko.pet.ai_calories_parser.data.MealParseInput
-import net.ppronko.pet.ai_calories_parser.data.ParsedMealResponse
+import net.ppronko.pet.ai_calories_parser.data.response.ParsedMealResponse
 import net.ppronko.pet.ai_calories_parser.service.adapter.AiClient
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
@@ -19,16 +19,17 @@ class GeminiMealVisionParser(
     private val logger = LoggerFactory.getLogger(javaClass)
 
     override fun parse(input: MealParseInput): ParsedMealResponse {
-        val imageUrl = input.imageUrl
-            ?: throw IllegalArgumentException("Image URL must be provided for the vision parser.")
+        val imageBytes: ByteArray = when {
+            input.imageFile != null -> input.imageFile
+            input.imageUrl != null -> downloadImage(input.imageUrl)
+                ?: throw RuntimeException("Failed to download image from URL: ${input.imageUrl}")
+            else -> throw IllegalArgumentException("Image must be provided either via imageUrl or imageFile")
+        }
 
-        logger.info("Parsing meal from image URL: {}", imageUrl)
-
-        val imageBytes = downloadImage(imageUrl)
-            ?: throw RuntimeException("Failed to download image from URL: $imageUrl")
         val base64Image = Base64.getEncoder().encodeToString(imageBytes)
-
         val prompt = createVisionPrompt(input.description)
+
+        logger.info("Parsing meal from image, description: {}", input.description)
 
         val responseJson = geminiClient.generateContent(prompt, base64Image)
         logger.debug("Received JSON response for vision parsing: {}", responseJson)

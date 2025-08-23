@@ -2,7 +2,7 @@ package net.ppronko.pet.ai_calories_parser.bot_command
 
 import net.ppronko.pet.ai_calories_parser.data.BotCommandConstants
 import net.ppronko.pet.ai_calories_parser.data.MealParseInput
-import net.ppronko.pet.ai_calories_parser.data.ParsedMealResponse
+import net.ppronko.pet.ai_calories_parser.data.response.ParsedMealResponse
 import net.ppronko.pet.ai_calories_parser.data.UserState
 import net.ppronko.pet.ai_calories_parser.menu.MainMenuKeyboard
 import net.ppronko.pet.ai_calories_parser.pattern.Command

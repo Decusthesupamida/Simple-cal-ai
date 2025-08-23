@@ -59,8 +59,8 @@ class ProfileCommand(
         val mode = if (profile.areGoalsAutomatic) "Автоматический" else "Ручной"
         val activity = MarkdownV2Escaper.escape(profile.activityDescription)
 
-        val currentGoalsText = "🔥 *${currentGoals.calories} ккал* | 💪 *${currentGoals.protein}г* | 🥑 *${currentGoals.fats}г* | 🍞 *${currentGoals.carbs}г*"
-        val calculatedGoalsText = "🔥 ${calculatedGoals.calories} ккал | 💪 ${calculatedGoals.protein}г | 🥑 ${calculatedGoals.fats}г | 🍞 ${calculatedGoals.carbs}г"
+        val currentGoalsText = "🔥 *${currentGoals.calories} ккал* | 💪 *${currentGoals.proteins}г* | 🥑 *${currentGoals.fats}г* | 🍞 *${currentGoals.carbs}г*"
+        val calculatedGoalsText = "🔥 ${calculatedGoals.calories} ккал | 💪 ${calculatedGoals.proteins}г | 🥑 ${calculatedGoals.fats}г | 🍞 ${calculatedGoals.carbs}г"
 
         return """
             *Ваш профиль* 👤

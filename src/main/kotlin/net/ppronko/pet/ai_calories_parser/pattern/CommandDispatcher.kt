@@ -9,7 +9,6 @@ import net.ppronko.pet.ai_calories_parser.service.DailyGoalService
 import net.ppronko.pet.ai_calories_parser.service.UserProfileService
 import net.ppronko.pet.ai_calories_parser.service.UserService
 import org.slf4j.LoggerFactory
-import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate
 import org.springframework.stereotype.Component
 import org.telegram.telegrambots.meta.api.methods.send.SendMessage
 import org.telegram.telegrambots.meta.api.objects.Update
@@ -127,7 +126,7 @@ class CommandDispatcher(
                 if (parts.size == 4) {
                     val goals = MacroGoals(
                         calories = parts[0],
-                        protein = parts[1],
+                        proteins = parts[1],
                         fats = parts[2],
                         carbs = parts[3]
                     )

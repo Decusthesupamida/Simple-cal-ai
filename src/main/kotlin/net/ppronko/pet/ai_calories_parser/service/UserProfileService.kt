@@ -6,6 +6,7 @@ import net.ppronko.pet.ai_calories_parser.data.entity.TelegramUser
 import net.ppronko.pet.ai_calories_parser.data.entity.TelegramUserProfile
 import net.ppronko.pet.ai_calories_parser.repository.TelegramUserProfileRepository
 import net.ppronko.pet.ai_calories_parser.repository.TelegramUserRepository
+import net.ppronko.pet.ai_calories_parser.service.parse.GeminiActivityParser
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional

@@ -15,11 +15,13 @@ class DailyGoalService(
 
     @Transactional
     fun saveManualGoal(user: TelegramUser, date: LocalDate, goals: MacroGoals) {
-        val existingGoal = dailyGoalRepository.findByUserAndDate(user, date)
+        val existingGoal = dailyGoalRepository.findByUserAndDate(user, date).orElseThrow {
+            IllegalStateException("Goal for user ${user.chatId} and date $date not found")
+        }
 
         if (existingGoal != null) {
             existingGoal.calories = goals.calories
-            existingGoal.protein = goals.protein
+            existingGoal.protein = goals.proteins
             existingGoal.fats = goals.fats
             existingGoal.carbs = goals.carbs
 
@@ -30,7 +32,7 @@ class DailyGoalService(
                 date = date,
                 user = user,
                 calories = goals.calories,
-                protein = goals.protein,
+                protein = goals.proteins,
                 fats = goals.fats,
                 carbs = goals.carbs
             )

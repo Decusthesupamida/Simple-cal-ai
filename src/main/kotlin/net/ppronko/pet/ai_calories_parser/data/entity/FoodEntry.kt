@@ -21,7 +21,7 @@ data class FoodEntry(
     val id: String = "",
 
     @Column(name = "meal_name", nullable = false)
-    val mealName: String,
+    var mealName: String,
 
     @Column(name = "entry_date", nullable = false)
     val entryDate: LocalDate,

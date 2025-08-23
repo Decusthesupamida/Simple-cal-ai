@@ -1,7 +1,8 @@
-package net.ppronko.pet.ai_calories_parser.repository;
+package net.ppronko.pet.ai_calories_parser.repository
 
 import net.ppronko.pet.ai_calories_parser.data.entity.TelegramUserProfile
 import org.springframework.data.jpa.repository.JpaRepository
 import java.util.*
 
-interface TelegramUserProfileRepository : JpaRepository<TelegramUserProfile, UUID> {}
+interface TelegramUserProfileRepository : JpaRepository<TelegramUserProfile, UUID> {
+}

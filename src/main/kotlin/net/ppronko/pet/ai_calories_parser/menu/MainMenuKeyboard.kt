@@ -24,7 +24,6 @@ object MainMenuKeyboard {
 
         return ReplyKeyboardMarkup().apply {
             keyboard = arrayListOf(row1, row2)
-
             resizeKeyboard = true
             oneTimeKeyboard = false
             selective = true

@@ -2,6 +2,7 @@ package net.ppronko.pet.ai_calories_parser.service.parse
 
 import com.fasterxml.jackson.databind.ObjectMapper
 import net.ppronko.pet.ai_calories_parser.data.*
+import net.ppronko.pet.ai_calories_parser.data.response.ParsedMealResponse
 import net.ppronko.pet.ai_calories_parser.service.adapter.AiClient
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service

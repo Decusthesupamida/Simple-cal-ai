@@ -24,9 +24,9 @@ object MessageFormatter {
                 🔥 Ккал:     ${c.calories.toString().padStart(5)} / ${
                             g.calories.toString().padStart(5)
                         } / ${r.calories.toString().padStart(5)}
-                💪 Белки:    ${c.protein.toString().padStart(5)} / ${
-                            g.protein.toString().padStart(5)
-                        } / ${r.protein.toString().padStart(5)}
+                💪 Белки:    ${c.proteins.toString().padStart(5)} / ${
+                            g.proteins.toString().padStart(5)
+                        } / ${r.proteins.toString().padStart(5)}
                 🥑 Жиры:     ${c.fats.toString().padStart(5)} / ${
                             g.fats.toString().padStart(5)
                         } / ${r.fats.toString().padStart(5)}
